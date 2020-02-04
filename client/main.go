@@ -1,28 +1,34 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 )
 
-func handshake(conn net.Conn, f *os.File) (uint32, error) {
+func handshake(conn net.Conn, f *os.File, args []string) (uint32, error) {
 	s, err := f.Stat()
 	if err != nil {
 		return 0, err
 	}
 	name := []byte(s.Name())
-	buf := new(bytes.Buffer)
-	head := make([]byte, 8)
-	binary.LittleEndian.PutUint32(head[:4],8 + uint32(len(name)))
-	buf.Write(head[:4])
-	binary.LittleEndian.PutUint64(head, uint64(s.Size()))
-	buf.Write(head)
-	buf.Write(name)
-	_, err = buf.WriteTo(conn)
+	head := make([]byte, 4)
+	resp := make([]byte, 8)
+	binary.LittleEndian.PutUint64(resp, uint64(s.Size()))
+	binary.LittleEndian.PutUint32(head, uint32(len(name)))
+	resp = append(resp, head...)
+	resp = append(resp, name...)
+	if len(args) >= 4 {
+		dir := []byte(args[3])
+		binary.LittleEndian.PutUint32(head, uint32(len(dir)))
+		resp = append(resp, head...)
+		resp = append(resp, dir...)
+	}
+	binary.LittleEndian.PutUint32(head, uint32(len(resp)))
+	_, err = conn.Write(append(head, resp...))
 	if err != nil {
 		return 0, err
 	}
@@ -37,7 +43,10 @@ func handshake(conn net.Conn, f *os.File) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	blockSize := binary.LittleEndian.Uint32(content[:4])
+	if content[0] != 0 {
+		return 0, errors.New("failed to handshake")
+	}
+	blockSize := binary.LittleEndian.Uint32(content[1:5])
 	return blockSize, nil
 }
 
@@ -50,20 +59,22 @@ func main() {
 	name := args[2]
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
 	f, err := os.Open(name)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 	defer f.Close()
 
-	size, err := handshake(conn, f)
+	size, err := handshake(conn, f, args)
 	if err != nil {
-		panic(err)
-	}
+		fmt.Println(err)
+		os.Exit(1)	}
 
 	block := make([]byte, size)
 	for {

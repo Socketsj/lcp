@@ -6,17 +6,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
-
-func IsDone(done chan struct{}) bool {
-	select {
-	case <-done:
-		return true
-	default:
-		return false
-	}
-}
 
 func main() {
 	addr := flag.String("addr", "0.0.0.0:44396", "listen at TCP")
@@ -38,7 +30,11 @@ func main() {
 	done := make(chan struct{})
 	connMap := make(map[string]*SeverConn)
 	taskConn := make(chan SeverTask, 10)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	go func(){
+		defer wg.Done()
 		for {
 			conn, err := listen.Accept()
 			if err != nil {
@@ -49,7 +45,9 @@ func main() {
 		}
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case task := <- taskConn:
@@ -60,6 +58,9 @@ func main() {
 					delete(connMap, task.sc.id)
 				}
 			case <-done:
+				for _, sc := range connMap {
+					sc.closeConn()
+				}
 				return
 			}
 		}
@@ -68,10 +69,8 @@ func main() {
 	sigs := make(chan os.Signal)
 	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	<-sigs
-	close(done)
 	listen.Close()
-	for _, sc := range connMap {
-		sc.closeConn()
-	}
+	close(done)
+	wg.Wait()
 	fmt.Println("stop server")
 }

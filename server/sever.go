@@ -107,27 +107,49 @@ func (s *SeverConn) close() {
 func (s *SeverConn) handshake() (*os.File, error) {
 	content, err := s.read()
 	if err != nil {
+		s.sendError()
 		return nil, err
 	}
 	size := len(content)
-	if size < CONTENT_SIZE {
+	if size < CONTENT_SIZE + HEAD_SIZE {
+		s.sendError()
 		return nil, errors.New("size too small")
 	}
-	s.size = binary.LittleEndian.Uint64(content[0:CONTENT_SIZE])
-	s.path = filepath.Join(s.path, string(content[CONTENT_SIZE:]))
+	index := 0
+	s.size = binary.LittleEndian.Uint64(content[index:index+CONTENT_SIZE])
+	index += CONTENT_SIZE
+	ln := int(binary.LittleEndian.Uint32(content[index:index+HEAD_SIZE]))
+	index += HEAD_SIZE
+	name := string(content[index:index+ln])
+	index += ln
+	dir := s.path
+	if index + HEAD_SIZE < size {
+		ln = int(binary.LittleEndian.Uint32(content[index:index+HEAD_SIZE]))
+		index += HEAD_SIZE
+		dir = string(content[index:index+ln])
+	}
+	s.path = filepath.Join(dir, name)
 	f, err := os.Create(s.path)
 	if err != nil {
+		s.sendError()
 		return nil, err
 	}
-	bs := make([]byte, 8)
-	binary.LittleEndian.PutUint32(bs[:4], 4)
-	binary.LittleEndian.PutUint32(bs[4:], BLOCK_SIZE)
+	bs := make([]byte, 9)
+	binary.LittleEndian.PutUint32(bs[:4], 5)
+	binary.LittleEndian.PutUint32(bs[5:], BLOCK_SIZE)
 	_, err = s.conn.Write(bs)
 	if err != nil {
 		f.Close()
 		return nil, err
 	}
 	return f, nil
+}
+
+func (s *SeverConn) sendError() {
+	bs := make([]byte, 5)
+	binary.LittleEndian.PutUint32(bs[:4], 1)
+	bs[4] = 1
+	s.conn.Write(bs)
 }
 
 func (s *SeverConn) read() ([]byte, error) {
