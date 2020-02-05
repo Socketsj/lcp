@@ -16,8 +16,6 @@ import (
 )
 
 const (
-	HEAD_SIZE = 4
-	CONTENT_SIZE = 8
 	BLOCK_SIZE = 32768
 )
 
