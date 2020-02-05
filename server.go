@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/Socketsj/lcp/server"
 	"net"
 	"os"
 	"os/signal"
@@ -28,8 +29,8 @@ func main() {
 	fmt.Println(fmt.Sprintf("start server addr=%s, path=%s", *addr, *path))
 
 	done := make(chan struct{})
-	connMap := make(map[string]*SeverConn)
-	taskConn := make(chan SeverTask, 10)
+	connMap := make(map[string]*server.Conn)
+	taskConn := make(chan server.SeverTask, 10)
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -40,7 +41,7 @@ func main() {
 			if err != nil {
 				return
 			}
-			sc := NewConn(conn, *path)
+			sc := server.NewServerConn(conn, *path)
 			go sc.Server(taskConn)
 		}
 	}()
@@ -51,15 +52,15 @@ func main() {
 		for {
 			select {
 			case task := <- taskConn:
-				switch task.s {
-				case task_add:
-					connMap[task.sc.id] = task.sc
-				case task_del:
-					delete(connMap, task.sc.id)
+				switch task.S {
+				case server.Task_add:
+					connMap[task.Sc.Id()] = task.Sc
+				case server.Task_del:
+					delete(connMap, task.Sc.Id())
 				}
 			case <-done:
 				for _, sc := range connMap {
-					sc.closeConn()
+					sc.CloseConn()
 				}
 				return
 			}

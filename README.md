@@ -1,29 +1,27 @@
 # lcp
  点对点传输文件，golang实现的文件传输文件程序。接受方需要起sever，发送方通过连接server监听的tcp端口进行发送文件
 
+# install
+ ```
+ # clone
+ git clone https://github.com/Socketsj/lcp
+ # install server
+ go build -o lcp-srv server.go
+ # install client
+ go build -o lcp-cli client.go
+ ```
+
 # usage
- 接受方需要启动server程序
+ 接受方需要启动server程序，发送方启动client程序发送
  
 ## 接收方
- 安装server程序
- ```
- cd server
- go build -o lcp-srv server.go main,go
- ```
- 
- 运行server程序
+
  ```
  lcp-srv --addr {{host:port}} --path {{store_path}}
  ```
  
  ## 发送方
- 安装client程序
- ```
- cd client
- go build -o lcp-cli main.go
- ```
- 运行client程序
- 
+
  ```
  lcp-cli {{host:port}} {{file_path}}
  ```

@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bufio"
@@ -28,16 +28,16 @@ const (
 )
 
 const (
-	task_add = 1
-	task_del = 2
+	Task_add = 1
+	Task_del = 2
 )
 
 type SeverTask struct {
-	sc *SeverConn
-	s  int
+	Sc *Conn
+	S  int
 }
 
-type SeverConn struct {
+type Conn struct {
 	id   string
 	size uint64
 	conn net.Conn
@@ -46,15 +46,15 @@ type SeverConn struct {
 	status int32
 }
 
-func NewConn(conn net.Conn, dir string) *SeverConn {
-	return &SeverConn{
+func NewServerConn(conn net.Conn, dir string) *Conn {
+	return &Conn{
 		id: RandId(),
 		conn: conn,
 		path: dir,
 	}
 }
 
-func (s *SeverConn) Server(	taskCh chan SeverTask) {
+func (s *Conn) Server(	taskCh chan SeverTask) {
 	f, err := s.handshake()
 	if err != nil {
 		s.conn.Close()
@@ -64,9 +64,9 @@ func (s *SeverConn) Server(	taskCh chan SeverTask) {
 	defer f.Close()
 	defer s.close()
 	defer func() {
-		taskCh <- SeverTask{sc: s, s: task_del}
+		taskCh <- SeverTask{Sc: s, S: Task_del}
 	}()
-	taskCh <- SeverTask{sc: s, s: task_add}
+	taskCh <- SeverTask{Sc: s, S: Task_add}
 
 	s.file = bufio.NewWriterSize(f, BLOCK_SIZE * 4)
 	s.status = status_active
@@ -90,13 +90,17 @@ func (s *SeverConn) Server(	taskCh chan SeverTask) {
 
 }
 
-func (s *SeverConn) closeConn() {
+func(s *Conn) Id() string {
+	return s.id
+}
+
+func (s *Conn) CloseConn() {
 	if atomic.CompareAndSwapInt32(&s.status, status_active, status_stop) {
 		s.conn.Close()
 	}
 }
 
-func (s *SeverConn) close() {
+func (s *Conn) close() {
 	if atomic.CompareAndSwapInt32(&s.status, status_active, status_stop) {
 		s.conn.Close()
 		if s.file != nil {
@@ -105,7 +109,7 @@ func (s *SeverConn) close() {
 	}
 }
 
-func (s *SeverConn) handshake() (*os.File, error) {
+func (s *Conn) handshake() (*os.File, error) {
 	content, err := common.HandShakeRecv(s.conn)
 	if err != nil {
 		s.sendError()
@@ -144,23 +148,11 @@ func (s *SeverConn) handshake() (*os.File, error) {
 	return f, nil
 }
 
-func (s *SeverConn) sendError() {
+func (s *Conn) sendError() {
 	bs := make([]byte, 5)
 	binary.LittleEndian.PutUint32(bs[:4], 1)
 	bs[4] = 1
 	s.conn.Write(bs)
-}
-
-func (s *SeverConn) read() ([]byte, error) {
-	head := make([]byte, HEAD_SIZE)
-	_, err := io.ReadFull(s.conn, head)
-	if err != nil {
-		return nil, err
-	}
-	headSize := binary.LittleEndian.Uint32(head)
-	content := make([]byte, headSize)
-	_, err = io.ReadFull(s.conn, content)
-	return content, err
 }
 
 func init()  {
