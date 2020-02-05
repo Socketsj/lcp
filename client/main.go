@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/Socketsj/lcp/common"
 	"io"
 	"net"
 	"os"
@@ -14,39 +15,21 @@ func handshake(conn net.Conn, f *os.File, args []string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	name := []byte(s.Name())
-	head := make([]byte, 4)
-	resp := make([]byte, 8)
-	binary.LittleEndian.PutUint64(resp, uint64(s.Size()))
-	binary.LittleEndian.PutUint32(head, uint32(len(name)))
-	resp = append(resp, head...)
-	resp = append(resp, name...)
-	if len(args) >= 4 {
-		dir := []byte(args[3])
-		binary.LittleEndian.PutUint32(head, uint32(len(dir)))
-		resp = append(resp, head...)
-		resp = append(resp, dir...)
-	}
-	binary.LittleEndian.PutUint32(head, uint32(len(resp)))
-	_, err = conn.Write(append(head, resp...))
+	args[2] = s.Name()
+	bs := make([]byte, common.HS_MSG_SIZE)
+	common.Endian.PutUint64(bs, uint64(s.Size()))
+	err = common.HandShakeSend(conn, bs, args[2:]...)
 	if err != nil {
 		return 0, err
 	}
-
-	_, err = io.ReadFull(conn, head[:4])
+	bs, err = common.HandShakeRecv(conn)
 	if err != nil {
 		return 0, err
 	}
-	size := binary.LittleEndian.Uint32(head[:4])
-	content := make([]byte, size)
-	_, err = io.ReadFull(conn, content)
-	if err != nil {
-		return 0, err
-	}
-	if content[0] != 0 {
+	if bs[0] != 0 {
 		return 0, errors.New("failed to handshake")
 	}
-	blockSize := binary.LittleEndian.Uint32(content[1:5])
+	blockSize := binary.LittleEndian.Uint32(bs[common.HS_STATUS_SIZE:common.HS_STATUS_SIZE+common.HS_HEAD_SIZE])
 	return blockSize, nil
 }
 

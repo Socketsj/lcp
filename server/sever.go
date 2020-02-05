@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/Socketsj/lcp/common"
 	"io"
 	"math/rand"
 	"net"
@@ -105,28 +106,26 @@ func (s *SeverConn) close() {
 }
 
 func (s *SeverConn) handshake() (*os.File, error) {
-	content, err := s.read()
+	content, err := common.HandShakeRecv(s.conn)
 	if err != nil {
 		s.sendError()
 		return nil, err
 	}
 	size := len(content)
-	if size < CONTENT_SIZE + HEAD_SIZE {
+	if size < common.HS_HEAD_SIZE + common.HS_MSG_SIZE {
 		s.sendError()
 		return nil, errors.New("size too small")
 	}
-	index := 0
-	s.size = binary.LittleEndian.Uint64(content[index:index+CONTENT_SIZE])
-	index += CONTENT_SIZE
-	ln := int(binary.LittleEndian.Uint32(content[index:index+HEAD_SIZE]))
-	index += HEAD_SIZE
-	name := string(content[index:index+ln])
-	index += ln
+	s.size = common.Endian.Uint64(content[:common.HS_MSG_SIZE])
+	args := common.ParserHsBytes(content[common.HS_MSG_SIZE:])
+	if len(args) == 0 {
+		s.sendError()
+		return nil, errors.New("size too small")
+	}
+	name := args[0]
 	dir := s.path
-	if index + HEAD_SIZE < size {
-		ln = int(binary.LittleEndian.Uint32(content[index:index+HEAD_SIZE]))
-		index += HEAD_SIZE
-		dir = string(content[index:index+ln])
+	if len(args) >= 2 {
+		dir = args[1]
 	}
 	s.path = filepath.Join(dir, name)
 	f, err := os.Create(s.path)
