@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"time"
 )
 
 type Conn struct {
@@ -29,22 +30,52 @@ func(c *Conn) Server(args ...string)  {
 	}
 
 	block := make([]byte, size)
-	for {
-		n, err := c.file.Read(block)
-		if err != nil && err != io.EOF {
-			fmt.Println("failed to read file err", err)
-			return
-		}
-		if n == 0 {
-			break
-		}
-		_, err = c.conn.Write(block[:n])
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
+	stat, err := c.file.Stat()
+	if err != nil {
+		fmt.Println("failed to File ")
+		return
 	}
 
+	total := stat.Size()
+	var sum uint64
+	name := stat.Name()
+	var collect, diff, start int64
+	var sspeed string
+	for {
+		if start == 0 || diff != 0 {
+			start = time.Now().UnixNano()
+			collect = 0
+		}
+
+		n, err := c.send(block)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Println("failed to send err:", err)
+			return
+		}
+		collect += int64(n)
+		diff = time.Now().UnixNano() - start
+		if diff > 0 {
+			sspeed = fmt.Sprintf("%.2fKB/s", float64(collect) / float64(diff) * 1e9 / 1024)
+		}
+		sum += uint64(n)
+		fmt.Fprint(os.Stdout, fmt.Sprintf("%s\t\t\t\t\t%s\t\t\t\t\t%.2f%%\r", name, sspeed, 100*float64(sum)/float64(total)))
+	}
+
+}
+
+func(c *Conn) send(block [] byte) (int, error) {
+	n, err := c.file.Read(block)
+	if err != nil && err != io.EOF {
+		return 0, err
+	}
+	if n == 0 {
+		return 0, io.EOF
+	}
+	_, err = c.conn.Write(block[:n])
+	return n, err
 }
 
 func(c *Conn) handshake(args ...string) (uint32, error) {
